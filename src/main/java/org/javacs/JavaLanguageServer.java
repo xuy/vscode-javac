@@ -178,7 +178,6 @@ class JavaLanguageServer implements LanguageServer {
                         String text = document.getText();
 
                         sourceByPath.put(path.get(), text);
-
                         doLint(path.get());
                     }
                 } catch (NoJavaConfigException e) {
@@ -203,6 +202,8 @@ class JavaLanguageServer implements LanguageServer {
                             sourceByPath.put(path.get(), newText);
                         }
                     }
+
+                    invalidateCache(path.get());
                 }
             }
 
@@ -218,6 +219,7 @@ class JavaLanguageServer implements LanguageServer {
                     
                     // Remove from source cache
                     sourceByPath.remove(path.get());
+                    invalidateCache(path.get());
                 }
             }
 
@@ -368,7 +370,7 @@ class JavaLanguageServer implements LanguageServer {
         };
     }
     
-    private void publishDiagnostics(Collection<Path> paths, DiagnosticCollector<JavaFileObject> errors) {
+    void publishDiagnostics(Collection<Path> paths, DiagnosticCollector<JavaFileObject> errors) {
         Map<URI, PublishDiagnosticsParamsImpl> files = new HashMap<>();
         
         paths.forEach(p -> files.put(p.toUri(), newPublishDiagnostics(p.toUri())));
@@ -499,6 +501,8 @@ class JavaLanguageServer implements LanguageServer {
             JavacConfig config = new JavacConfig(sourcePath, classPath, outputDirectory);
 
             return Optional.of(config);
+        } else if (Files.exists(dir.resolve("pom.xml"))) {
+            return Optional.ofNullable(MavenJavacConfig.get(workspaceRoot).getConfig(dir));
         }
         // TODO add more file types
         else {
@@ -626,23 +630,22 @@ class JavaLanguageServer implements LanguageServer {
 
     private Optional<Symbol> findSymbol(URI uri, int line, int character) {
         return getFilePath(uri).flatMap(path -> {
-            DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
             JavacHolder compiler = findCompiler(path);
             SymbolIndex index = findIndex(path);
             JavaFileObject file = findFile(compiler, path);
             long cursor = findOffset(file, line, character);
             SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file, cursor, compiler.context);
 
-            compiler.onError(errors);
-
-            JCTree.JCCompilationUnit tree = compiler.parse(file);
-
-            compiler.compile(tree);
-
-            index.update(tree, compiler.context);
+            JCTree.JCCompilationUnit tree = index.get(uri);
+            if (tree == null) {
+                DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
+                compiler.onError(errors);
+                tree = compiler.parse(file);
+                compiler.compile(tree);
+                index.update(tree, compiler.context);
+            }
 
             tree.accept(visitor);
-
             return visitor.found;
         });
     }
@@ -912,6 +915,17 @@ class JavaLanguageServer implements LanguageServer {
             return new StringFileObject(acc.toString(), path);
         } catch (IOException e) {
             throw ShowMessageException.error("Error reading " + file, e);
+        }
+    }
+
+    private void invalidateCache(Path sourceFile) {
+        Path dir = sourceFile.getParent();
+        Optional<JavacConfig> config = findConfig(dir);
+        if (config.isPresent()) {
+            SymbolIndex index = indexCache.get(config.get());
+            if (index != null) {
+                index.clear(sourceFile.toUri());
+            }
         }
     }
 }

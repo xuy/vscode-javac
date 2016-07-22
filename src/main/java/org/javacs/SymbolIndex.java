@@ -516,4 +516,8 @@ public class SymbolIndex {
         sourcePath.remove(sourceFile);
         activeDocuments.remove(sourceFile);
     }
+
+    public JCTree.JCCompilationUnit get(URI sourceFile) {
+        return activeDocuments.get(sourceFile);
+    }
 }
