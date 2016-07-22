@@ -28,6 +28,8 @@ class JavaLanguageServer implements LanguageServer {
 
     private Workspace workspace;
 
+    private ShutdownHandler shutdownHandler;
+
     public JavaLanguageServer() {
     }
 
@@ -37,6 +39,14 @@ class JavaLanguageServer implements LanguageServer {
      */
     public void setWorkspace(Workspace workspace) {
         this.workspace = workspace;
+    }
+
+    /**
+     * Sets shutdown handler
+     * @param shutdownHandler handler to set
+     */
+    public void setShutdownHandler(ShutdownHandler shutdownHandler) {
+        this.shutdownHandler = shutdownHandler;
     }
 
     public void onError(String message, Throwable error) {
@@ -84,7 +94,9 @@ class JavaLanguageServer implements LanguageServer {
 
     @Override
     public void shutdown() {
-
+        if (shutdownHandler != null) {
+            shutdownHandler.shutdown(this);
+        }
     }
 
     @Override

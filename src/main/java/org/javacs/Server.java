@@ -3,8 +3,6 @@ package org.javacs;
 import io.typefox.lsapi.services.json.LanguageServerToJsonAdapter;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.ExecutionException;
@@ -20,12 +18,19 @@ public class Server {
             ServerSocket socket = new ServerSocket(Integer.parseInt(System.getProperty("javacs.port")));
             Socket client;
             while ((client = socket.accept()) != null) {
-                LOG.info("New connection at " + client.getPort());
+                final int port = client.getPort();
+                LOG.info("New connection at " + port);
                 final Connection connection = new Connection(client);
                 Thread t = new Thread(() -> {
-                    run(connection);
+                    try {
+                        connection.run();
+                    } catch (IOException e) {
+                        // ignore
+                    } finally {
+                        LOG.info("Closed connection at " + port);
+                    }
                 });
-                t.setName("Connector " + client.getPort());
+                t.setName("Connector " + port);
                 t.setDaemon(true);
                 t.start();
             }
@@ -36,45 +41,41 @@ public class Server {
         }
     }
 
-    private static class Connection {
-        final InputStream in;
-        final OutputStream out;
-        final Socket socket;
+    private static class Connection implements ShutdownHandler {
 
-        private Connection(Socket socket) throws IOException {
+        private final Socket socket;
+        private final JavaLanguageServer server;
+        private final LanguageServerToJsonAdapter jsonServer;
+
+        private Connection(Socket socket) {
             this.socket = socket;
-            this.in = socket.getInputStream();
-            this.out = socket.getOutputStream();
+            this.server = new JavaLanguageServer();
+            this.jsonServer = new LanguageServerToJsonAdapter(this.server);
         }
-    }
 
-    /**
-     * Listen for requests
-     * Send replies asynchronously.
-     * When the request stream is closed, wait for 5s for all outstanding responses to compute, then return.
-     */
-    static void run(Connection connection) {
-        JavaLanguageServer server = new JavaLanguageServer();
-        LanguageServerToJsonAdapter jsonServer = new LanguageServerToJsonAdapter(server);
-
-        jsonServer.connect(connection.in, connection.out);
-        jsonServer.getProtocol().addErrorListener((message, err) -> {
-            LOG.log(Level.SEVERE, message, err);
-            if (err instanceof IOException) {
-                server.shutdown();
-                try {
-                    connection.socket.close();
-                } catch (IOException ignore) {
-                    // NOOP
+        private void run() throws IOException {
+            jsonServer.connect(socket.getInputStream(), socket.getOutputStream());
+            jsonServer.getProtocol().addErrorListener((message, err) -> {
+                if (err instanceof IOException) {
+                    this.shutdown(server);
+                } else {
+                    LOG.log(Level.SEVERE, message, err);
                 }
+            });
+
+            try {
+                jsonServer.join();
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            } finally {
+                this.socket.close();
             }
-            //server.onError(message, err);
-        });
-        
-        try {
-            jsonServer.join();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
+        }
+
+        @Override
+        public void shutdown(JavaLanguageServer server) {
+            jsonServer.getProtocol().getIoHandler().stop();
         }
     }
+
 }
