@@ -10,22 +10,17 @@ import java.io.*;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import static org.javacs.Main.JSON;
 
 class Workspace {
 
-    private static final Logger LOG = Logger.getLogger("main");
     private Path root;
-    private Map<Path, String> sourceByPath = new HashMap<>();
 
     private Map<JavacConfig, SymbolIndex> indexCache = new HashMap<>();
 
-    // TODO invalidate cache when VSCode notifies us config file has changed
     private Map<Path, Optional<JavacConfig>> configCache = new HashMap<>();
 
     private Map<JavacConfig, JavacHolder> compilerCache = new HashMap<>();
@@ -61,13 +56,6 @@ class Workspace {
         this.testJavac = testJavac;
         this.javaLanguageServer = javaLanguageServer;
         workspaces.put(root, this);
-    }
-
-    private Optional<Path> getFilePath(URI uri) {
-        if (!uri.getScheme().equals("file"))
-            return Optional.empty();
-        else
-            return Optional.of(Paths.get(uri));
     }
 
     /**
@@ -189,36 +177,8 @@ class Workspace {
         }
     }
 
-    public void setFile(Path path, String text) {
-        sourceByPath.put(path, text);
-        invalidateCache(path);
-    }
-
-    public void clearFile(Path path) {
-        sourceByPath.remove(path);
-        invalidateCache(path);
-    }
-
-    public String getFile(Path path) {
-        return sourceByPath.get(path);
-    }
-
     public JavaFileObject findFile(JavacHolder compiler, Path path) {
-        if (sourceByPath.containsKey(path))
-            return new StringFileObject(sourceByPath.get(path), path);
-        else
-            return compiler.fileManager.getRegularFile(path.toFile());
-    }
-
-    private void invalidateCache(Path sourceFile) {
-        Path dir = sourceFile.getParent();
-        Optional<JavacConfig> config = findConfig(dir);
-        if (config.isPresent()) {
-            SymbolIndex index = indexCache.get(config.get());
-            if (index != null) {
-                index.clear(sourceFile.toUri());
-            }
-        }
+        return compiler.fileManager.getRegularFile(path.toFile());
     }
 
     public List<SymbolInformation> getSymbols(WorkspaceSymbolParams params) {
