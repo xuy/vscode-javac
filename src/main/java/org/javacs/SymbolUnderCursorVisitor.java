@@ -5,16 +5,15 @@ import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.util.Context;
 
 import javax.tools.JavaFileObject;
-import java.util.*;
-import java.util.logging.Logger;
+import java.util.Optional;
 
 /**
  * Finds symbol under the cursor
  */
 public class SymbolUnderCursorVisitor extends CursorScanner {
-    private static final Logger LOG = Logger.getLogger("main");
-    
+
     public Optional<Symbol> found = Optional.empty();
+    public JCTree foundTree;
 
     public SymbolUnderCursorVisitor(JavaFileObject file, long cursor, Context context) {
         super(file, cursor, context);
@@ -35,7 +34,7 @@ public class SymbolUnderCursorVisitor extends CursorScanner {
             containsCursor(tree.body);
 
         if (!containsCursorAnywhere) // TODO deal with spaces
-            found(tree.sym);
+            found(tree.sym, tree);
     }
 
     @Override
@@ -49,9 +48,9 @@ public class SymbolUnderCursorVisitor extends CursorScanner {
             containsCursor(tree.init);
 
         if (containsCursor(tree.nameexpr))
-            found(tree.sym);
+            found(tree.sym, tree);
         else if (tree.nameexpr == null && !containsCursorAnywhere)
-            found(tree.sym); // TODO deal with spaces
+            found(tree.sym, tree); // TODO deal with spaces
     }
 
     @Override
@@ -66,7 +65,7 @@ public class SymbolUnderCursorVisitor extends CursorScanner {
           containsCursor(tree.defs);
 
         if (!containsCursorAnywhere) // TODO deal with spaces
-            found(tree.sym);
+            found(tree.sym, tree);
     }
 
     @Override
@@ -78,7 +77,7 @@ public class SymbolUnderCursorVisitor extends CursorScanner {
 
         Symbol symbol = id.sym;
 
-        found(symbol);
+        found(symbol, id);
     }
 
     @Override
@@ -91,7 +90,7 @@ public class SymbolUnderCursorVisitor extends CursorScanner {
         if (!containsCursor(tree.getExpression())) {
             Symbol symbol = tree.sym;
 
-            found(symbol);
+            found(symbol, tree);
         }
     }
 
@@ -105,11 +104,12 @@ public class SymbolUnderCursorVisitor extends CursorScanner {
         if (!containsCursor(tree.getQualifierExpression())) {
             Symbol symbol = tree.sym;
 
-            found(symbol);
+            found(symbol, tree);
         }
     }
 
-    private void found(Symbol symbol) {
+    private void found(Symbol symbol, JCTree tree) {
         found = Optional.ofNullable(symbol);
+        foundTree = tree;
     }
 }
