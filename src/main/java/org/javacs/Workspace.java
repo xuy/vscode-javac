@@ -106,7 +106,11 @@ class Workspace {
     }
 
     private SymbolIndex newIndex(JavacConfig c) {
-        return new SymbolIndex(c.classPath, c.sourcePath, c.outputDirectory, javaLanguageServer::publishDiagnostics);
+        return new SymbolIndex(c.classPath,
+                c.sourcePath,
+                c.outputDirectory,
+                root,
+                javaLanguageServer::publishDiagnostics);
     }
 
 
@@ -224,4 +228,13 @@ class Workspace {
                 .limit(100)
                 .collect(Collectors.toList());
     }
+
+    public URI getURI(String uri) {
+        URI full = URI.create(uri);
+        if (!full.getScheme().equals("file")) {
+            return null;
+        }
+        return this.root.toUri().resolve(full.getPath().substring(1));
+    }
+
 }

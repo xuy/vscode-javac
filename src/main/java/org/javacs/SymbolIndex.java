@@ -1,23 +1,25 @@
 package org.javacs;
 
-import java.net.URI;
-import java.util.*;
-import java.io.*;
-import java.nio.file.*;
-import java.util.logging.*;
-import java.util.concurrent.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import javax.lang.model.element.ElementKind;
-import javax.tools.*;
-
-import javax.tools.JavaFileObject;
-
-import com.sun.tools.javac.tree.*;
-import com.sun.tools.javac.code.*;
+import com.sun.tools.javac.code.Symbol;
+import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.tree.TreeInfo;
+import com.sun.tools.javac.tree.TreeScanner;
 import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.Name;
 import io.typefox.lsapi.*;
+
+import javax.lang.model.element.ElementKind;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaFileObject;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 public class SymbolIndex {
     private static final Logger LOG = Logger.getLogger("main");
@@ -42,6 +44,8 @@ public class SymbolIndex {
      */
     private Map<URI, JCTree.JCCompilationUnit> activeDocuments = new HashMap<>();
 
+    private URI root;
+
     @FunctionalInterface
     public interface ReportDiagnostics {
         void report(Collection<Path> paths, DiagnosticCollector<JavaFileObject> diagnostics);
@@ -49,8 +53,14 @@ public class SymbolIndex {
     
     public SymbolIndex(Set<Path> classPath, 
                        Set<Path> sourcePath, 
-                       Path outputDirectory, 
+                       Path outputDirectory,
+                       Path root,
                        ReportDiagnostics publishDiagnostics) {
+
+        if (root != null) {
+            this.root = root.toUri();
+        }
+
         JavacHolder compiler = new JavacHolder(classPath, sourcePath, outputDirectory);
         Indexer indexer = new Indexer(compiler.context);
         
@@ -338,7 +348,7 @@ public class SymbolIndex {
         }
     }
 
-    private static SymbolInformationImpl symbolInformation(JCTree tree, Symbol symbol, JCTree.JCCompilationUnit compilationUnit) {
+    private SymbolInformationImpl symbolInformation(JCTree tree, Symbol symbol, JCTree.JCCompilationUnit compilationUnit) {
         LocationImpl location = location(tree, compilationUnit);
         SymbolInformationImpl info = new SymbolInformationImpl();
 
@@ -356,7 +366,7 @@ public class SymbolIndex {
         return info;
     }
 
-    private static LocationImpl location(JCTree tree, JCTree.JCCompilationUnit compilationUnit) {
+    private LocationImpl location(JCTree tree, JCTree.JCCompilationUnit compilationUnit) {
         try {
             // Declaration should include offset
             int offset = tree.pos;
@@ -385,7 +395,15 @@ public class SymbolIndex {
                                                                  end);
             LocationImpl location = new LocationImpl();
 
-            location.setUri(compilationUnit.getSourceFile().toUri().toString());
+            URI full = compilationUnit.getSourceFile().toUri();
+            String uri;
+            if (root != null) {
+                uri = "file:///" + root.relativize(full);
+            } else {
+                uri = full.toString();
+            }
+
+            location.setUri(uri);
             location.setRange(position);
 
             return location;

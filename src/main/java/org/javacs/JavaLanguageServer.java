@@ -109,7 +109,7 @@ class JavaLanguageServer implements LanguageServer {
         return new TextDocumentService() {
             @Override
             public CompletableFuture<CompletionList> completion(TextDocumentPositionParams position) {
-                return CompletableFuture.completedFuture(autocomplete(position));
+                return null;
             }
 
             @Override
@@ -184,63 +184,18 @@ class JavaLanguageServer implements LanguageServer {
 
             @Override
             public void didOpen(DidOpenTextDocumentParams params) {
-                try {
-                    TextDocumentItem document = params.getTextDocument();
-                    URI uri = URI.create(document.getUri());
-                    Optional<Path> path = getFilePath(uri);
-
-                    if (path.isPresent()) {
-                        String text = document.getText();
-
-                        workspace.setFile(path.get(), text);
-                        doLint(path.get());
-                    }
-                } catch (NoJavaConfigException e) {
-                    throw ShowMessageException.warning(e.getMessage(), e);
-                }
             }
 
             @Override
             public void didChange(DidChangeTextDocumentParams params) {
-                VersionedTextDocumentIdentifier document = params.getTextDocument();
-                URI uri = URI.create(document.getUri());
-                Optional<Path> path = getFilePath(uri);
-
-                if (path.isPresent()) {
-                    for (TextDocumentContentChangeEvent change : params.getContentChanges()) {
-                        if (change.getRange() == null)
-                            workspace.setFile(path.get(), change.getText());
-                        else {
-                            String existingText = workspace.getFile(path.get());
-                            String newText = patch(existingText, change);
-
-                            workspace.setFile(path.get(), newText);
-                        }
-                    }
-                }
             }
 
             @Override
             public void didClose(DidCloseTextDocumentParams params) {
-                TextDocumentIdentifier document = params.getTextDocument();
-                URI uri = URI.create(document.getUri());
-                Optional<Path> path = getFilePath(uri);
-
-                if (path.isPresent()) {
-                    // Remove from source cache
-                    workspace.clearFile(path.get());
-                }
             }
 
             @Override
             public void didSave(DidSaveTextDocumentParams params) {
-                TextDocumentIdentifier document = params.getTextDocument();
-                URI uri = URI.create(document.getUri());
-                Optional<Path> path = getFilePath(uri);
-
-                // TODO re-lint dependencies as well as changed files
-                if (path.isPresent())
-                    doLint(path.get());
             }
 
             @Override
@@ -289,7 +244,7 @@ class JavaLanguageServer implements LanguageServer {
     }
 
     private Optional<Path> getFilePath(URI uri) {
-        if (!uri.getScheme().equals("file"))
+        if (uri == null || !uri.getScheme().equals("file"))
             return Optional.empty();
         else
             return Optional.of(Paths.get(uri));
@@ -330,26 +285,6 @@ class JavaLanguageServer implements LanguageServer {
 
             @Override
             public void didChangeWatchedFiles(DidChangeWatchedFilesParams params) {
-                for (FileEvent event : params.getChanges()) {
-                    String eventUri = event.getUri();
-                    if (eventUri.endsWith(".java")) {
-                        if (event.getType() == FileEvent.TYPE_DELETED) {
-                            URI uri = URI.create(event.getUri());
-
-                            getFilePath(uri).ifPresent(path -> {
-                                JavacHolder compiler = workspace.findCompiler(path);
-                                JavaFileObject file = workspace.findFile(compiler, path);
-                                SymbolIndex index = workspace.findIndex(path);
-
-                                compiler.clear(file);
-                                index.clear(file.toUri());
-                            });
-                        }
-                    }
-                    else if (eventUri.endsWith("javaconfig.json") || eventUri.endsWith("pom.xml")) {
-                        // TODO invalidate caches when javaconfig.json or pom.xml changes
-                    }
-                }
             }
         };
     }
@@ -475,7 +410,7 @@ class JavaLanguageServer implements LanguageServer {
     }
 
     private List<? extends Location> findReferences(ReferenceParams params) {
-        URI uri = URI.create(params.getTextDocument().getUri());
+        URI uri = workspace.getURI(params.getTextDocument().getUri());
         int line = params.getPosition().getLine();
         int character = params.getPosition().getCharacter();
         List<Location> result = new ArrayList<>();
@@ -490,7 +425,7 @@ class JavaLanguageServer implements LanguageServer {
     }
 
     private List<? extends SymbolInformation> findDocumentSymbols(DocumentSymbolParams params) {
-        URI uri = URI.create(params.getTextDocument().getUri());
+        URI uri = workspace.getURI(params.getTextDocument().getUri());
 
         return getFilePath(uri).map(path -> {
             SymbolIndex index = workspace.findIndex(path);
@@ -523,7 +458,7 @@ class JavaLanguageServer implements LanguageServer {
     }
 
     public List<? extends Location> gotoDefinition(TextDocumentPositionParams position) {
-        URI uri = URI.create(position.getTextDocument().getUri());
+        URI uri = workspace.getURI(position.getTextDocument().getUri());
         int line = position.getPosition().getLine();
         int character = position.getPosition().getCharacter();
         List<Location> result = new ArrayList<>();
@@ -643,7 +578,7 @@ class JavaLanguageServer implements LanguageServer {
     public HoverImpl doHover(TextDocumentPositionParams position) {
         HoverImpl result = new HoverImpl();
         
-        Optional<Path> maybePath = getFilePath(URI.create(position.getTextDocument().getUri()));
+        Optional<Path> maybePath = getFilePath(workspace.getURI(position.getTextDocument().getUri()));
 
         if (maybePath.isPresent()) {
             Path path = maybePath.get();
@@ -725,69 +660,6 @@ class JavaLanguageServer implements LanguageServer {
         result.setValue(value);
 
         return result;
-    }
-
-    public CompletionList autocomplete(TextDocumentPositionParams position) {
-        CompletionListImpl result = new CompletionListImpl();
-
-        result.setIncomplete(false);
-        result.setItems(new ArrayList<>());
-
-        Optional<Path> maybePath = getFilePath(URI.create(position.getTextDocument().getUri()));
-
-        if (maybePath.isPresent()) {
-            Path path = maybePath.get();
-            DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
-            JavacHolder compiler = workspace.findCompiler(path);
-            JavaFileObject file = workspace.findFile(compiler, path);
-            long cursor = findOffset(file, position.getPosition().getLine(), position.getPosition().getCharacter());
-            JavaFileObject withSemi = withSemicolonAfterCursor(file, path, cursor);
-            AutocompleteVisitor autocompleter = new AutocompleteVisitor(withSemi, cursor, compiler.context);
-
-            compiler.onError(errors);
-
-            JCTree.JCCompilationUnit ast = compiler.parse(withSemi);
-
-            // Remove all statements after the cursor
-            // There are often parse errors after the cursor, which can generate unrecoverable type errors
-            ast.accept(new AutocompletePruner(withSemi, cursor, compiler.context));
-
-            compiler.compile(ast);
-
-            ast.accept(autocompleter);
-
-            result.getItems().addAll(autocompleter.suggestions);
-        }
-
-        return result;
-    }
-
-    /**
-     * Insert ';' after the users cursor so we recover from parse errors in a helpful way when doing autocomplete.
-     */
-    private JavaFileObject withSemicolonAfterCursor(JavaFileObject file, Path path, long cursor) {
-        try (Reader reader = file.openReader(true)) {
-            StringBuilder acc = new StringBuilder();
-
-            for (int i = 0; i < cursor; i++) {
-                int next = reader.read();
-
-                if (next == -1)
-                    throw new RuntimeException("End of file " + file + " before cursor " + cursor);
-
-                acc.append((char) next);
-            }
-
-            acc.append(";");
-
-            for (int next = reader.read(); next > 0; next = reader.read()) {
-                acc.append((char) next);
-            }
-
-            return new StringFileObject(acc.toString(), path);
-        } catch (IOException e) {
-            throw ShowMessageException.error("Error reading " + file, e);
-        }
     }
 
 }
