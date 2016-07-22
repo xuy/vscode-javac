@@ -397,6 +397,9 @@ class JavaLanguageServer implements LanguageServer {
 
         findSymbol(uri, line, character).ifPresent(symbol -> {
             getFilePath(uri).map(workspace::findIndex).ifPresent(index -> {
+                index.findSymbol(symbol).ifPresent(info -> {
+                    result.add(info.getLocation());
+                });
                 index.references(symbol).forEach(result::add);
             });
         });
