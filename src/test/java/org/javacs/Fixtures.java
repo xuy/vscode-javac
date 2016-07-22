@@ -25,12 +25,12 @@ public class Fixtures {
         Set<Path> sourcePath = Collections.singleton(Paths.get("src/test/resources").toAbsolutePath());
         Path outputDirectory = Paths.get("out").toAbsolutePath();
         JavacHolder javac = new JavacHolder(classPath, sourcePath, outputDirectory);
-        JavaLanguageServer server = new JavaLanguageServer(javac);
+        JavaLanguageServer server = new JavaLanguageServer();
+        Path workspaceRoot = Paths.get(".").toAbsolutePath().normalize();
+        server.setWorkspace(new Workspace(workspaceRoot, server, javac));
 
         InitializeParamsImpl init = new InitializeParamsImpl();
-        String workspaceRoot = Paths.get(".").toAbsolutePath().toString();
-
-        init.setRootPath(workspaceRoot);
+        init.setRootPath(workspaceRoot.toString());
 
         server.initialize(init);
         return server;

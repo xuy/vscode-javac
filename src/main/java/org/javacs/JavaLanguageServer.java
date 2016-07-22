@@ -1,16 +1,17 @@
 package org.javacs;
 
-import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.code.Symbol;
-import io.typefox.lsapi.services.*;
+import com.sun.tools.javac.tree.JCTree;
 import io.typefox.lsapi.*;
-import io.typefox.lsapi.Diagnostic;
+import io.typefox.lsapi.services.LanguageServer;
+import io.typefox.lsapi.services.TextDocumentService;
+import io.typefox.lsapi.services.WindowService;
+import io.typefox.lsapi.services.WorkspaceService;
 
-import javax.lang.model.element.*;
-import javax.tools.*;
+import javax.tools.DiagnosticCollector;
+import javax.tools.JavaFileObject;
 import java.io.*;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -20,21 +21,22 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import static org.javacs.Main.JSON;
-
 class JavaLanguageServer implements LanguageServer {
     private static final Logger LOG = Logger.getLogger("main");
-    private Path workspaceRoot;
     private Consumer<PublishDiagnosticsParams> publishDiagnostics = p -> {};
     private Consumer<MessageParams> showMessage = m -> {};
-    private Map<Path, String> sourceByPath = new HashMap<>();
+
+    private Workspace workspace;
 
     public JavaLanguageServer() {
-        this.testJavac = Optional.empty();
     }
 
-    public JavaLanguageServer(JavacHolder testJavac) {
-        this.testJavac = Optional.of(testJavac);
+    /**
+     * Initializes language server with given workspace (for testing)
+     * @param workspace workspace to set
+     */
+    public void setWorkspace(Workspace workspace) {
+        this.workspace = workspace;
     }
 
     public void onError(String message, Throwable error) {
@@ -60,7 +62,8 @@ class JavaLanguageServer implements LanguageServer {
 
     @Override
     public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
-        workspaceRoot = Paths.get(params.getRootPath()).toAbsolutePath().normalize();
+
+        workspace = Workspace.getInstance(Paths.get(params.getRootPath()).toAbsolutePath().normalize(), this);
 
         InitializeResultImpl result = new InitializeResultImpl();
 
@@ -177,7 +180,7 @@ class JavaLanguageServer implements LanguageServer {
                     if (path.isPresent()) {
                         String text = document.getText();
 
-                        sourceByPath.put(path.get(), text);
+                        workspace.setFile(path.get(), text);
                         doLint(path.get());
                     }
                 } catch (NoJavaConfigException e) {
@@ -194,16 +197,14 @@ class JavaLanguageServer implements LanguageServer {
                 if (path.isPresent()) {
                     for (TextDocumentContentChangeEvent change : params.getContentChanges()) {
                         if (change.getRange() == null)
-                            sourceByPath.put(path.get(), change.getText());
+                            workspace.setFile(path.get(), change.getText());
                         else {
-                            String existingText = sourceByPath.get(path.get());
+                            String existingText = workspace.getFile(path.get());
                             String newText = patch(existingText, change);
 
-                            sourceByPath.put(path.get(), newText);
+                            workspace.setFile(path.get(), newText);
                         }
                     }
-
-                    invalidateCache(path.get());
                 }
             }
 
@@ -214,12 +215,8 @@ class JavaLanguageServer implements LanguageServer {
                 Optional<Path> path = getFilePath(uri);
 
                 if (path.isPresent()) {
-                    JavacHolder compiler = findCompiler(path.get());
-                    JavaFileObject file = findFile(compiler, path.get());
-                    
                     // Remove from source cache
-                    sourceByPath.remove(path.get());
-                    invalidateCache(path.get());
+                    workspace.clearFile(path.get());
                 }
             }
 
@@ -291,9 +288,9 @@ class JavaLanguageServer implements LanguageServer {
 
         DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
 
-        JavacHolder compiler = findCompiler(path);
-        SymbolIndex index = findIndex(path);
-        JavaFileObject file = findFile(compiler, path);
+        JavacHolder compiler = workspace.findCompiler(path);
+        SymbolIndex index = workspace.findIndex(path);
+        JavaFileObject file = workspace.findFile(compiler, path);
 
         compiler.onError(errors);
 
@@ -311,13 +308,7 @@ class JavaLanguageServer implements LanguageServer {
         return new WorkspaceService() {
             @Override
             public CompletableFuture<List<? extends SymbolInformation>> symbol(WorkspaceSymbolParams params) {
-                List<SymbolInformation> infos = indexCache.values()
-                                                          .stream()
-                                                          .flatMap(symbolIndex -> symbolIndex.search(params.getQuery()))
-                                                          .limit(100)
-                                                          .collect(Collectors.toList());
-
-                return CompletableFuture.completedFuture(infos);
+                return CompletableFuture.completedFuture(workspace.getSymbols(params));
             }
 
             @Override
@@ -328,22 +319,23 @@ class JavaLanguageServer implements LanguageServer {
             @Override
             public void didChangeWatchedFiles(DidChangeWatchedFilesParams params) {
                 for (FileEvent event : params.getChanges()) {
-                    if (event.getUri().endsWith(".java")) {
+                    String eventUri = event.getUri();
+                    if (eventUri.endsWith(".java")) {
                         if (event.getType() == FileEvent.TYPE_DELETED) {
                             URI uri = URI.create(event.getUri());
 
                             getFilePath(uri).ifPresent(path -> {
-                                JavacHolder compiler = findCompiler(path);
-                                JavaFileObject file = findFile(compiler, path);
-                                SymbolIndex index = findIndex(path);
+                                JavacHolder compiler = workspace.findCompiler(path);
+                                JavaFileObject file = workspace.findFile(compiler, path);
+                                SymbolIndex index = workspace.findIndex(path);
 
                                 compiler.clear(file);
                                 index.clear(file.toUri());
                             });
                         }
                     }
-                    else if (event.getUri().endsWith("javaconfig.json")) {
-                        // TODO invalidate caches when javaconfig.json changes
+                    else if (eventUri.endsWith("javaconfig.json") || eventUri.endsWith("pom.xml")) {
+                        // TODO invalidate caches when javaconfig.json or pom.xml changes
                     }
                 }
             }
@@ -393,7 +385,7 @@ class JavaLanguageServer implements LanguageServer {
             }
         });
 
-        files.values().forEach(publishDiagnostics::accept);
+        files.values().forEach(publishDiagnostics);
     }
 
     private int severity(javax.tools.Diagnostic.Kind kind) {
@@ -417,138 +409,6 @@ class JavaLanguageServer implements LanguageServer {
         p.setUri(newUri.toString());
 
         return p;
-    }
-
-    private Map<JavacConfig, JavacHolder> compilerCache = new HashMap<>();
-
-    /**
-     * Instead of looking for javaconfig.json and creating a JavacHolder, just use this.
-     * For testing.
-     */
-    private final Optional<JavacHolder> testJavac;
-
-    /**
-     * Look for a configuration in a parent directory of uri
-     */
-    public JavacHolder findCompiler(Path path) {
-        if (testJavac.isPresent())
-            return testJavac.get();
-
-        Path dir = path.getParent();
-        Optional<JavacConfig> config = findConfig(dir);
-        
-        // If config source path doesn't contain source file, then source file has no config
-        if (config.isPresent() && !config.get().sourcePath.stream().anyMatch(s -> path.startsWith(s)))
-            throw new NoJavaConfigException(path.getFileName() + " is not on the source path");
-        
-        Optional<JavacHolder> maybeHolder = config.map(c -> compilerCache.computeIfAbsent(c, this::newJavac));
-
-        return maybeHolder.orElseThrow(() -> new NoJavaConfigException(path));
-    }
-
-    private JavacHolder newJavac(JavacConfig c) {
-        return new JavacHolder(c.classPath,
-                               c.sourcePath,
-                               c.outputDirectory);
-    }
-
-    private Map<JavacConfig, SymbolIndex> indexCache = new HashMap<>();
-
-    public SymbolIndex findIndex(Path path) {
-        Path dir = path.getParent();
-        Optional<JavacConfig> config = findConfig(dir);
-        Optional<SymbolIndex> index = config.map(c -> indexCache.computeIfAbsent(c, this::newIndex));
-
-        return index.orElseThrow(() -> new NoJavaConfigException(path));
-    }
-
-    private SymbolIndex newIndex(JavacConfig c) {
-        return new SymbolIndex(c.classPath, c.sourcePath, c.outputDirectory, this::publishDiagnostics);
-    }
-
-    // TODO invalidate cache when VSCode notifies us config file has changed
-    private Map<Path, Optional<JavacConfig>> configCache = new HashMap<>();
-
-    private Optional<JavacConfig> findConfig(Path dir) {
-        return configCache.computeIfAbsent(dir, this::doFindConfig);
-    }
-
-    private Optional<JavacConfig> doFindConfig(Path dir) {
-        while (true) {
-            Optional<JavacConfig> found = readIfConfig(dir);
-
-            if (found.isPresent())
-                return found;
-            else if (workspaceRoot.startsWith(dir))
-                return Optional.empty();
-            else
-                dir = dir.getParent();
-        }
-    }
-
-    /**
-     * If directory contains a config file, for example javaconfig.json or an eclipse project file, read it.
-     */
-    public Optional<JavacConfig> readIfConfig(Path dir) {
-        if (Files.exists(dir.resolve("javaconfig.json"))) {
-            JavaConfigJson json = readJavaConfigJson(dir.resolve("javaconfig.json"));
-            Set<Path> classPath = json.classPathFile.map(classPathFile -> {
-                Path classPathFilePath = dir.resolve(classPathFile);
-                return readClassPathFile(classPathFilePath);
-            }).orElse(Collections.emptySet());
-            Set<Path> sourcePath = json.sourcePath.stream().map(dir::resolve).collect(Collectors.toSet());
-            Path outputDirectory = dir.resolve(json.outputDirectory);
-            JavacConfig config = new JavacConfig(sourcePath, classPath, outputDirectory);
-
-            return Optional.of(config);
-        } else if (Files.exists(dir.resolve("pom.xml"))) {
-            return Optional.ofNullable(MavenJavacConfig.get(workspaceRoot).getConfig(dir));
-        }
-        // TODO add more file types
-        else {
-            return Optional.empty();
-        }
-    }
-
-    private JavaConfigJson readJavaConfigJson(Path configFile) {
-        try {
-            return JSON.readValue(configFile.toFile(), JavaConfigJson.class);
-        } catch (IOException e) {
-            MessageParamsImpl message = new MessageParamsImpl();
-
-            message.setMessage("Error reading " + configFile);
-            message.setType(MessageParams.TYPE_ERROR);
-
-            throw new ShowMessageException(message, e);
-        }
-    }
-
-    private Set<Path> readClassPathFile(Path classPathFilePath) {
-        try {
-            InputStream in = Files.newInputStream(classPathFilePath);
-            String text = new BufferedReader(new InputStreamReader(in))
-                    .lines()
-                    .collect(Collectors.joining());
-            Path dir = classPathFilePath.getParent();
-
-            return Arrays.stream(text.split(File.pathSeparator))
-                         .map(dir::resolve)
-                         .collect(Collectors.toSet());
-        } catch (IOException e) {
-            MessageParamsImpl message = new MessageParamsImpl();
-
-            message.setMessage("Error reading " + classPathFilePath);
-            message.setType(MessageParams.TYPE_ERROR);
-
-            throw new ShowMessageException(message, e);
-        }
-    }
-
-    public JavaFileObject findFile(JavacHolder compiler, Path path) {
-        if (sourceByPath.containsKey(path))
-            return new StringFileObject(sourceByPath.get(path), path);
-        else
-            return compiler.fileManager.getRegularFile(path.toFile());
     }
 
     private RangeImpl position(javax.tools.Diagnostic<? extends JavaFileObject> error) {
@@ -609,7 +469,7 @@ class JavaLanguageServer implements LanguageServer {
         List<Location> result = new ArrayList<>();
 
         findSymbol(uri, line, character).ifPresent(symbol -> {
-            getFilePath(uri).map(this::findIndex).ifPresent(index -> {
+            getFilePath(uri).map(workspace::findIndex).ifPresent(index -> {
                 index.references(symbol).forEach(result::add);
             });
         });
@@ -621,7 +481,7 @@ class JavaLanguageServer implements LanguageServer {
         URI uri = URI.create(params.getTextDocument().getUri());
 
         return getFilePath(uri).map(path -> {
-            SymbolIndex index = findIndex(path);
+            SymbolIndex index = workspace.findIndex(path);
             List<? extends SymbolInformation> found = index.allInFile(uri).collect(Collectors.toList());
 
             return found;
@@ -630,9 +490,9 @@ class JavaLanguageServer implements LanguageServer {
 
     private Optional<Symbol> findSymbol(URI uri, int line, int character) {
         return getFilePath(uri).flatMap(path -> {
-            JavacHolder compiler = findCompiler(path);
-            SymbolIndex index = findIndex(path);
-            JavaFileObject file = findFile(compiler, path);
+            JavacHolder compiler = workspace.findCompiler(path);
+            SymbolIndex index = workspace.findIndex(path);
+            JavaFileObject file = workspace.findFile(compiler, path);
             long cursor = findOffset(file, line, character);
             SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file, cursor, compiler.context);
 
@@ -657,7 +517,7 @@ class JavaLanguageServer implements LanguageServer {
         List<Location> result = new ArrayList<>();
 
         findSymbol(uri, line, character).ifPresent(symbol -> {
-            getFilePath(uri).map(this::findIndex).ifPresent(index -> {
+            getFilePath(uri).map(workspace::findIndex).ifPresent(index -> {
                 index.findSymbol(symbol).ifPresent(info -> {
                     result.add(info.getLocation());
                 });
@@ -776,8 +636,8 @@ class JavaLanguageServer implements LanguageServer {
         if (maybePath.isPresent()) {
             Path path = maybePath.get();
             DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
-            JavacHolder compiler = findCompiler(path);
-            JavaFileObject file = findFile(compiler, path);
+            JavacHolder compiler = workspace.findCompiler(path);
+            JavaFileObject file = workspace.findFile(compiler, path);
             long cursor = findOffset(file, position.getPosition().getLine(), position.getPosition().getCharacter());
             SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file, cursor, compiler.context);
 
@@ -866,8 +726,8 @@ class JavaLanguageServer implements LanguageServer {
         if (maybePath.isPresent()) {
             Path path = maybePath.get();
             DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
-            JavacHolder compiler = findCompiler(path);
-            JavaFileObject file = findFile(compiler, path);
+            JavacHolder compiler = workspace.findCompiler(path);
+            JavaFileObject file = workspace.findFile(compiler, path);
             long cursor = findOffset(file, position.getPosition().getLine(), position.getPosition().getCharacter());
             JavaFileObject withSemi = withSemicolonAfterCursor(file, path, cursor);
             AutocompleteVisitor autocompleter = new AutocompleteVisitor(withSemi, cursor, compiler.context);
@@ -918,14 +778,4 @@ class JavaLanguageServer implements LanguageServer {
         }
     }
 
-    private void invalidateCache(Path sourceFile) {
-        Path dir = sourceFile.getParent();
-        Optional<JavacConfig> config = findConfig(dir);
-        if (config.isPresent()) {
-            SymbolIndex index = indexCache.get(config.get());
-            if (index != null) {
-                index.clear(sourceFile.toUri());
-            }
-        }
-    }
 }
