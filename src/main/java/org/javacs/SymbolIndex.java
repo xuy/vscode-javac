@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 import java.util.stream.Stream;
 
@@ -37,12 +38,12 @@ public class SymbolIndex {
     /**
      * Source path files, for which we support methods and classes
      */
-    private Map<URI, SourceFileIndex> sourcePath = new HashMap<>();
+    private Map<URI, SourceFileIndex> sourcePath = new ConcurrentHashMap<>();
 
     /**
      * Active files, for which we index locals
      */
-    private Map<URI, JCTree.JCCompilationUnit> activeDocuments = new HashMap<>();
+    private Map<URI, JCTree.JCCompilationUnit> activeDocuments = new ConcurrentHashMap<>();
 
     private URI root;
 
@@ -352,14 +353,22 @@ public class SymbolIndex {
         LocationImpl location = location(tree, compilationUnit);
         SymbolInformationImpl info = new SymbolInformationImpl();
 
-        info.setContainer(symbol.getEnclosingElement().getQualifiedName().toString());
+        Symbol enclosing = symbol.getEnclosingElement();
+        if (enclosing != null) {
+            info.setContainer(enclosing.getQualifiedName().toString());
+        }
         info.setKind(symbolInformationKind(symbol.getKind()));
         
         // Constructors have name <init>, use class name instead
-        if (symbol.getKind() == ElementKind.CONSTRUCTOR)
-            info.setName(symbol.getEnclosingElement().getSimpleName().toString());            
-        else
+        if (symbol.getKind() == ElementKind.CONSTRUCTOR) {
+            if (enclosing != null) {
+                info.setName(enclosing.getSimpleName().toString());
+            } else {
+                // TODO what if we were unable to resolve enclosing symbol?
+            }
+        } else {
             info.setName(symbol.getSimpleName().toString());
+        }
 
         info.setLocation(location);
 

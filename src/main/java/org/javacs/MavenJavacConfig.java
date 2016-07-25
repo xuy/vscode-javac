@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -60,7 +61,7 @@ class MavenJavacConfig {
     /**
      * Mapping (directory -> config) for each directory containing pom.xml
      */
-    private Map<Path, JavacConfig> javacConfigMap = new HashMap<>();
+    private Map<Path, JavacConfig> javacConfigMap = new ConcurrentHashMap<>();
 
     /**
      * @param path workspace root

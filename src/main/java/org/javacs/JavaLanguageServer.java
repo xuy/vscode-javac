@@ -357,14 +357,22 @@ class JavaLanguageServer implements LanguageServer {
         int character = params.getPosition().getCharacter();
         List<Location> result = new ArrayList<>();
 
-        findSymbol(uri, line, character).ifPresent(symbol -> {
-            getFilePath(uri).map(workspace::findIndex).ifPresent(index -> {
-                index.findSymbol(symbol).ifPresent(info -> {
-                    result.add(info.getLocation());
+        try {
+            findSymbol(uri, line, character).ifPresent(symbol -> {
+                getFilePath(uri).map(workspace::findIndex).ifPresent(index -> {
+                    index.findSymbol(symbol).ifPresent(info -> {
+                        result.add(info.getLocation());
+                    });
+                    index.references(symbol).forEach(result::add);
                 });
-                index.references(symbol).forEach(result::add);
             });
-        });
+        } catch (Exception e) {
+            LOG.log(Level.WARNING,
+                    "An error occurred while looking for references " +
+                            uri + ' ' + line + ':' + character,
+                    e);
+        }
+
 
         return result;
     }
@@ -408,13 +416,19 @@ class JavaLanguageServer implements LanguageServer {
         int character = position.getPosition().getCharacter();
         List<Location> result = new ArrayList<>();
 
-        findSymbol(uri, line, character).ifPresent(symbol -> {
-            getFilePath(uri).map(workspace::findIndex).ifPresent(index -> {
-                index.findSymbol(symbol).ifPresent(info -> {
-                    result.add(info.getLocation());
+        try {
+            findSymbol(uri, line, character).ifPresent(symbol -> {
+                getFilePath(uri).map(workspace::findIndex).ifPresent(index -> {
+                    index.findSymbol(symbol).ifPresent(info -> {
+                        result.add(info.getLocation());
+                    });
                 });
             });
-        });
+        } catch (Exception e) {
+            LOG.log(Level.WARNING,
+                    "An error occurred while looking for definition " + uri + ' ' + line + ':' + character ,
+                    e);
+        }
 
         return result;
     }
@@ -524,86 +538,94 @@ class JavaLanguageServer implements LanguageServer {
         HoverImpl result = new HoverImpl();
 
         URI uri = workspace.getURI(position.getTextDocument().getUri());
-        Optional<Path> maybePath = getFilePath(uri);
 
-        if (maybePath.isPresent()) {
-            Path path = maybePath.get();
-            JavacHolder compiler = workspace.findCompiler(path);
-            JavaFileObject file = workspace.findFile(compiler, path);
-            SymbolIndex index = workspace.findIndex(path);
-            long cursor = findOffset(file, position.getPosition().getLine(), position.getPosition().getCharacter());
-            SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file, cursor, compiler.context);
+        try {
+            Optional<Path> maybePath = getFilePath(uri);
 
-            JCTree.JCCompilationUnit tree = index.get(uri);
-            if (tree == null) {
-                DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
-                compiler.onError(errors);
-                tree = compiler.parse(file);
-                compiler.compile(tree);
-                index.update(tree, compiler.context);
-            }
+            if (maybePath.isPresent()) {
+                Path path = maybePath.get();
+                JavacHolder compiler = workspace.findCompiler(path);
+                JavaFileObject file = workspace.findFile(compiler, path);
+                SymbolIndex index = workspace.findIndex(path);
+                long cursor = findOffset(file, position.getPosition().getLine(), position.getPosition().getCharacter());
+                SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file, cursor, compiler.context);
 
-            tree.accept(visitor);
-            
-            if (visitor.found.isPresent()) {
-                Symbol symbol = visitor.found.get();
-                List<MarkedStringImpl> contents = new ArrayList<>();
-
-                String text = tree.docComments.getCommentText(visitor.foundTree);
-                if (text != null) {
-                    contents.add(markedString(text));
-                } else {
-
-                    switch (symbol.getKind()) {
-                        case PACKAGE:
-                            contents.add(markedString("package " + symbol.getQualifiedName()));
-
-                            break;
-                        case ENUM:
-                            contents.add(markedString("enum " + symbol.getQualifiedName()));
-
-                            break;
-                        case CLASS:
-                            contents.add(markedString("class " + symbol.getQualifiedName()));
-
-                            break;
-                        case ANNOTATION_TYPE:
-                            contents.add(markedString("@interface " + symbol.getQualifiedName()));
-
-                            break;
-                        case INTERFACE:
-                            contents.add(markedString("interface " + symbol.getQualifiedName()));
-
-                            break;
-                        case METHOD:
-                        case CONSTRUCTOR:
-                        case STATIC_INIT:
-                        case INSTANCE_INIT:
-                            Symbol.MethodSymbol method = (Symbol.MethodSymbol) symbol;
-                            String signature = AutocompleteVisitor.methodSignature(method);
-                            String returnType = ShortTypePrinter.print(method.getReturnType());
-
-                            contents.add(markedString(returnType + " " + signature));
-
-                            break;
-                        case PARAMETER:
-                        case LOCAL_VARIABLE:
-                        case EXCEPTION_PARAMETER:
-                        case ENUM_CONSTANT:
-                        case FIELD:
-                            contents.add(markedString(ShortTypePrinter.print(symbol.type)));
-
-                            break;
-                        case TYPE_PARAMETER:
-                        case OTHER:
-                        case RESOURCE_VARIABLE:
-                            break;
-                    }
+                JCTree.JCCompilationUnit tree = index.get(uri);
+                if (tree == null) {
+                    DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
+                    compiler.onError(errors);
+                    tree = compiler.parse(file);
+                    compiler.compile(tree);
+                    index.update(tree, compiler.context);
                 }
-                result.setContents(contents);
+
+                tree.accept(visitor);
+
+                if (visitor.found.isPresent()) {
+                    Symbol symbol = visitor.found.get();
+                    List<MarkedStringImpl> contents = new ArrayList<>();
+
+                    String text = tree.docComments.getCommentText(visitor.foundTree);
+                    if (text != null) {
+                        contents.add(markedString(text));
+                    } else {
+
+                        switch (symbol.getKind()) {
+                            case PACKAGE:
+                                contents.add(markedString("package " + symbol.getQualifiedName()));
+
+                                break;
+                            case ENUM:
+                                contents.add(markedString("enum " + symbol.getQualifiedName()));
+
+                                break;
+                            case CLASS:
+                                contents.add(markedString("class " + symbol.getQualifiedName()));
+
+                                break;
+                            case ANNOTATION_TYPE:
+                                contents.add(markedString("@interface " + symbol.getQualifiedName()));
+
+                                break;
+                            case INTERFACE:
+                                contents.add(markedString("interface " + symbol.getQualifiedName()));
+
+                                break;
+                            case METHOD:
+                            case CONSTRUCTOR:
+                            case STATIC_INIT:
+                            case INSTANCE_INIT:
+                                Symbol.MethodSymbol method = (Symbol.MethodSymbol) symbol;
+                                String signature = AutocompleteVisitor.methodSignature(method);
+                                String returnType = ShortTypePrinter.print(method.getReturnType());
+
+                                contents.add(markedString(returnType + " " + signature));
+
+                                break;
+                            case PARAMETER:
+                            case LOCAL_VARIABLE:
+                            case EXCEPTION_PARAMETER:
+                            case ENUM_CONSTANT:
+                            case FIELD:
+                                contents.add(markedString(ShortTypePrinter.print(symbol.type)));
+
+                                break;
+                            case TYPE_PARAMETER:
+                            case OTHER:
+                            case RESOURCE_VARIABLE:
+                                break;
+                        }
+                    }
+                    result.setContents(contents);
+                }
             }
+        } catch (Exception e) {
+            LOG.log(Level.WARNING,
+                    "An error occurred while looking for hover " +
+                            uri + ' ' + position.getPosition().getLine() + ':' + position.getPosition().getCharacter(),
+                    e);
         }
-        
+
         return result;
     }
 

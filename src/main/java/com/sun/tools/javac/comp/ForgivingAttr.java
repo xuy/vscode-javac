@@ -48,7 +48,14 @@ public class ForgivingAttr extends Attr {
         }
 
         public void visitAnnotation(JCTree.JCAnnotation tree) {
-            chk.validateTypeAnnotation(tree, false);
+            // TODO: try/catch added to deal with
+            // java.lang.AssertionError: annotation tree hasn't been attributed yet: @SuppressWarnings("unchecked")
+            try {
+                // TODO:
+                chk.validateTypeAnnotation(tree, false);
+            } catch (Exception ex) {
+                // ignore
+            }
             super.visitAnnotation(tree);
         }
         public void visitAnnotatedType(JCTree.JCAnnotatedType tree) {
@@ -109,7 +116,7 @@ public class ForgivingAttr extends Attr {
                 checkForDeclarationAnnotations(((JCTree.JCAnnotatedType) tree.clazz).annotations,
                                                tree.clazz.type.tsym);
             }
-            if (tree.def != null) {
+            if (tree.def != null && tree.clazz.type != null) {
                 checkForDeclarationAnnotations(tree.def.mods.annotations, tree.clazz.type.tsym);
             }
             if (tree.clazz.type != null) {

@@ -11,6 +11,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static org.javacs.Main.JSON;
@@ -19,11 +20,11 @@ class Workspace {
 
     private Path root;
 
-    private Map<JavacConfig, SymbolIndex> indexCache = new HashMap<>();
+    private Map<JavacConfig, SymbolIndex> indexCache = new ConcurrentHashMap<>();
 
-    private Map<Path, Optional<JavacConfig>> configCache = new HashMap<>();
+    private Map<Path, Optional<JavacConfig>> configCache = new ConcurrentHashMap<>();
 
-    private Map<JavacConfig, JavacHolder> compilerCache = new HashMap<>();
+    private Map<JavacConfig, JavacHolder> compilerCache = new ConcurrentHashMap<>();
 
     /**
      * Instead of looking for javaconfig.json and creating a JavacHolder, just use this.
@@ -136,10 +137,8 @@ class Workspace {
             return Optional.of(config);
         } else if (Files.exists(dir.resolve("pom.xml"))) {
             return Optional.ofNullable(MavenJavacConfig.get(root).getConfig(dir));
-        }
-        // TODO add more file types
-        else {
-            return Optional.empty();
+        } else {
+            return Optional.of(CatchEmAllJavacConfig.get(root).getConfig());
         }
     }
 
