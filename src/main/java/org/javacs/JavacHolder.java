@@ -38,8 +38,8 @@ import java.util.logging.Logger;
  */
 public class JavacHolder {
     private static final Logger LOG = Logger.getLogger("main");
-    private final Set<Path> classPath;
-    private final Set<Path> sourcePath;
+    private final Collection<Path> classPath;
+    private final Collection<Path> sourcePath;
     private final Path outputDirectory;
     // javac places all of its internal state into this Context object,
     // which is basically a Map<String, Object>
@@ -97,7 +97,7 @@ public class JavacHolder {
     private final JavacTrees trees = JavacTrees.instance(context);
     private final Types types = Types.instance(context);
 
-    public JavacHolder(Set<Path> classPath, Set<Path> sourcePath, Path outputDirectory) {
+    public JavacHolder(Collection<Path> classPath, Collection<Path> sourcePath, Path outputDirectory) {
         this.classPath = classPath;
         this.sourcePath = sourcePath;
         this.outputDirectory = outputDirectory;

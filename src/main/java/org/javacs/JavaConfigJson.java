@@ -1,11 +1,9 @@
 package org.javacs;
 
-import java.nio.file.Path;
-import java.util.Set;
-import java.util.Optional;
+import java.util.Collection;
 
 public class JavaConfigJson {
-    public Set<Path> sourcePath;
-    public Optional<Path> classPathFile = Optional.empty();
-    public Path outputDirectory;
+    public Collection<String> sources;
+    public Collection<String> classPath;
+    public String outputDirectory;
 }

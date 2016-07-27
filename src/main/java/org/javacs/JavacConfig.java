@@ -1,14 +1,14 @@
 package org.javacs;
 
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Objects;
-import java.util.Set;
 
 public class JavacConfig {
-    public final Set<Path> sourcePath, classPath;
+    public final Collection<Path> sourcePath, classPath;
     public final Path outputDirectory;
 
-    public JavacConfig(Set<Path> sourcePath, Set<Path> classPath, Path outputDirectory) {
+    public JavacConfig(Collection<Path> sourcePath, Collection<Path> classPath, Path outputDirectory) {
         this.sourcePath = sourcePath;
         this.classPath = classPath;
         this.outputDirectory = outputDirectory;
