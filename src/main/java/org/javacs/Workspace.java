@@ -184,11 +184,7 @@ class Workspace {
     }
 
     public URI getURI(String uri) {
-        URI full = URI.create(uri);
-        if (!full.getScheme().equals("file")) {
-            return null;
-        }
-        return this.root.toUri().resolve(full.getPath().substring(1));
+        return this.root.toUri().resolve(uri);
     }
 
 }

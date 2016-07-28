@@ -428,8 +428,12 @@ class JavaLanguageServer implements LanguageServer {
             throw ShowMessageException.error(e.getMessage(), e);
         }
     }
-    
+
     public HoverImpl doHover(TextDocumentPositionParams position) {
+
+        LOG.info("Hover " + position.getTextDocument().getUri() + ' ' +
+                position.getPosition().getLine() + ':' + position.getPosition().getCharacter());
+
         HoverImpl result = new HoverImpl();
 
         URI uri = workspace.getURI(position.getTextDocument().getUri());
