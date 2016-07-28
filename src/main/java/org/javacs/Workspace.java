@@ -1,10 +1,12 @@
 package org.javacs;
 
+import com.sun.tools.javac.tree.JCTree;
 import io.typefox.lsapi.MessageParams;
 import io.typefox.lsapi.MessageParamsImpl;
 import io.typefox.lsapi.SymbolInformation;
 import io.typefox.lsapi.WorkspaceSymbolParams;
 
+import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
 import java.io.*;
 import java.net.URI;
@@ -171,7 +173,7 @@ class Workspace {
         }
     }
 
-    public JavaFileObject findFile(JavacHolder compiler, Path path) {
+    private JavaFileObject findFile(JavacHolder compiler, Path path) {
         return compiler.fileManager.getRegularFile(path.toFile());
     }
 
@@ -185,6 +187,26 @@ class Workspace {
 
     public URI getURI(String uri) {
         return this.root.toUri().resolve(uri);
+    }
+
+    public synchronized JCTree.JCCompilationUnit getTree(Path path, URI uri) {
+        JavacHolder compiler = findCompiler(path);
+        JavaFileObject file = findFile(compiler, path);
+        SymbolIndex index = findIndex(path);
+
+        JCTree.JCCompilationUnit tree = index.get(uri);
+        if (tree == null) {
+            DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
+            compiler.onError(errors);
+            tree = compiler.parse(file);
+            compiler.compile(tree);
+            index.update(tree, compiler.context);
+        }
+        return tree;
+    }
+
+    public JavaFileObject getFile(Path path) {
+        return findCompiler(path).fileManager.getRegularFile(path.toFile());
     }
 
 }

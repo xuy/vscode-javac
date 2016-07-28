@@ -1,23 +1,21 @@
 package org.javacs;
 
 import com.google.common.base.Joiner;
-import com.google.common.collect.ImmutableList;
-import com.sun.source.util.TaskEvent;
-import com.sun.source.util.TaskListener;
-import com.sun.tools.javac.api.JavacTrees;
-import com.sun.tools.javac.api.MultiTaskListener;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
-import com.sun.tools.javac.comp.*;
+import com.sun.tools.javac.comp.AttrContext;
+import com.sun.tools.javac.comp.Check;
+import com.sun.tools.javac.comp.Env;
+import com.sun.tools.javac.comp.Todo;
 import com.sun.tools.javac.file.JavacFileManager;
 import com.sun.tools.javac.main.JavaCompiler;
-import com.sun.tools.javac.parser.FuzzyParserFactory;
 import com.sun.tools.javac.tree.JCTree;
-import com.sun.tools.javac.tree.TreeScanner;
 import com.sun.tools.javac.util.*;
 
-import javax.tools.*;
-import java.io.*;
+import javax.tools.DiagnosticListener;
+import javax.tools.JavaFileObject;
+import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +23,6 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.*;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -38,9 +35,6 @@ import java.util.logging.Logger;
  */
 public class JavacHolder {
     private static final Logger LOG = Logger.getLogger("main");
-    private final Collection<Path> classPath;
-    private final Collection<Path> sourcePath;
-    private final Path outputDirectory;
     // javac places all of its internal state into this Context object,
     // which is basically a Map<String, Object>
     public final Context context = new Context();
@@ -82,10 +76,8 @@ public class JavacHolder {
     }
 
     public final JavacFileManager fileManager = new JavacFileManager(context, true, null);
-    private final ForgivingAttr attr = ForgivingAttr.instance(context);
     private final Check check = Check.instance(context);
     // FuzzyParserFactory registers itself in context and pre-empts the normal ParserFactory from being created
-    private final FuzzyParserFactory parserFactory = FuzzyParserFactory.instance(context);
     public final JavaCompiler compiler = JavaCompiler.instance(context);
 
     {
@@ -94,34 +86,13 @@ public class JavacHolder {
     }
 
     private final Todo todo = Todo.instance(context);
-    private final JavacTrees trees = JavacTrees.instance(context);
     private final Types types = Types.instance(context);
 
     public JavacHolder(Collection<Path> classPath, Collection<Path> sourcePath, Path outputDirectory) {
-        this.classPath = classPath;
-        this.sourcePath = sourcePath;
-        this.outputDirectory = outputDirectory;
 
         options.put("-classpath", Joiner.on(File.pathSeparator).join(classPath));
         options.put("-sourcepath", Joiner.on(File.pathSeparator).join(sourcePath));
         options.put("-d", outputDirectory.toString());
-
-        MultiTaskListener.instance(context).add(new TaskListener() {
-            @Override
-            public void started(TaskEvent e) {
-                LOG.fine("started " + e);
-
-                JCTree.JCCompilationUnit unit = (JCTree.JCCompilationUnit) e.getCompilationUnit();
-            }
-
-            @Override
-            public void finished(TaskEvent e) {
-                LOG.fine("finished " + e);
-
-                JCTree.JCCompilationUnit unit = (JCTree.JCCompilationUnit) e.getCompilationUnit();
-            }
-        });
-
         ensureOutputDirectory(outputDirectory);
         clearOutputDirectory(outputDirectory);
     }
@@ -164,10 +135,7 @@ public class JavacHolder {
      */
     public JCTree.JCCompilationUnit parse(JavaFileObject source) {
         clear(source);
-
-        JCTree.JCCompilationUnit result = compiler.parse(source);
-
-        return result;
+        return compiler.parse(source);
     }
 
     public void compile(Collection<JCTree.JCCompilationUnit> parsed) {
@@ -177,7 +145,7 @@ public class JavacHolder {
             // We don't do the desugar or generate phases, because they remove method bodies and methods
             Env<AttrContext> next = todo.remove();
             Env<AttrContext> attributedTree = compiler.attribute(next);
-            Queue<Env<AttrContext>> analyzedTree = compiler.flow(attributedTree);
+            compiler.flow(attributedTree);
         }
     }
     

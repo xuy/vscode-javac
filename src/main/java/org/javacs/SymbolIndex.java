@@ -539,11 +539,6 @@ public class SymbolIndex {
         activeDocuments.put(tree.getSourceFile().toUri(), tree);
     }
 
-    public void clear(URI sourceFile) {
-        sourcePath.remove(sourceFile);
-        activeDocuments.remove(sourceFile);
-    }
-
     public JCTree.JCCompilationUnit get(URI sourceFile) {
         return activeDocuments.get(sourceFile);
     }

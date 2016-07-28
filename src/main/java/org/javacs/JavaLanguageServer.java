@@ -285,21 +285,12 @@ class JavaLanguageServer implements LanguageServer {
 
     private Optional<Symbol> findSymbol(URI uri, int line, int character) {
         return getFilePath(uri).flatMap(path -> {
-            JavacHolder compiler = workspace.findCompiler(path);
-            SymbolIndex index = workspace.findIndex(path);
-            JavaFileObject file = workspace.findFile(compiler, path);
+            JCTree.JCCompilationUnit tree = workspace.getTree(path, uri);
+            JavaFileObject file = workspace.getFile(path);
             long cursor = findOffset(file, line, character);
-            SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file, cursor, compiler.context);
-
-            JCTree.JCCompilationUnit tree = index.get(uri);
-            if (tree == null) {
-                DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
-                compiler.onError(errors);
-                tree = compiler.parse(file);
-                compiler.compile(tree);
-                index.update(tree, compiler.context);
-            }
-
+            SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file,
+                    cursor,
+                    workspace.findCompiler(path).context);
             tree.accept(visitor);
             return visitor.found;
         });
@@ -440,24 +431,13 @@ class JavaLanguageServer implements LanguageServer {
 
         try {
             Optional<Path> maybePath = getFilePath(uri);
-
             if (maybePath.isPresent()) {
-                Path path = maybePath.get();
-                JavacHolder compiler = workspace.findCompiler(path);
-                JavaFileObject file = workspace.findFile(compiler, path);
-                SymbolIndex index = workspace.findIndex(path);
+                JCTree.JCCompilationUnit tree = workspace.getTree(maybePath.get(), uri);
+                JavaFileObject file = workspace.getFile(maybePath.get());
                 long cursor = findOffset(file, position.getPosition().getLine(), position.getPosition().getCharacter());
-                SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file, cursor, compiler.context);
-
-                JCTree.JCCompilationUnit tree = index.get(uri);
-                if (tree == null) {
-                    DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
-                    compiler.onError(errors);
-                    tree = compiler.parse(file);
-                    compiler.compile(tree);
-                    index.update(tree, compiler.context);
-                }
-
+                SymbolUnderCursorVisitor visitor = new SymbolUnderCursorVisitor(file,
+                        cursor,
+                        workspace.findCompiler(maybePath.get()).context);
                 tree.accept(visitor);
 
                 if (visitor.found.isPresent()) {
