@@ -52,8 +52,8 @@ public class SymbolIndex {
         void report(Collection<Path> paths, DiagnosticCollector<JavaFileObject> diagnostics);
     }
     
-    public SymbolIndex(Collection<Path> classPath,
-                       Collection<Path> sourcePath,
+    public SymbolIndex(Set<Path> classPath, 
+                       Set<Path> sourcePath, 
                        Path outputDirectory,
                        Path root,
                        ReportDiagnostics publishDiagnostics) {

@@ -63,6 +63,8 @@ import java.util.stream.Collectors;
 
 class JavaLanguageServer implements LanguageServer {
     private static final Logger LOG = Logger.getLogger("main");
+    private Consumer<PublishDiagnosticsParams> publishDiagnostics = p -> {};
+    private Consumer<MessageParams> showMessage = m -> {};
 
     private Workspace workspace;
 
@@ -88,9 +90,9 @@ class JavaLanguageServer implements LanguageServer {
     }
 
     public void onError(String message, Throwable error) {
-        if (error instanceof ShowMessageException) {
-            // NOOP
-        } else if (error instanceof NoJavaConfigException) {
+        if (error instanceof ShowMessageException)
+            showMessage.accept(((ShowMessageException) error).message);
+        else if (error instanceof NoJavaConfigException) {
             // Swallow error
             // If you want to show a message for no-java-config, 
             // you have to specifically catch the error lower down and re-throw it
@@ -98,6 +100,13 @@ class JavaLanguageServer implements LanguageServer {
         }
         else {
             LOG.log(Level.SEVERE, message, error);
+            
+            MessageParamsImpl m = new MessageParamsImpl();
+
+            m.setMessage(message);
+            m.setType(MessageParams.TYPE_ERROR);
+
+            showMessage.accept(m);
         }
     }
 
@@ -232,6 +241,7 @@ class JavaLanguageServer implements LanguageServer {
 
             @Override
             public void onPublishDiagnostics(Consumer<PublishDiagnosticsParams> callback) {
+                publishDiagnostics = callback;
             }
         };
     }
@@ -267,6 +277,7 @@ class JavaLanguageServer implements LanguageServer {
         return new WindowService() {
             @Override
             public void onShowMessage(Consumer<MessageParams> callback) {
+                showMessage = callback;
             }
 
             @Override
@@ -282,10 +293,103 @@ class JavaLanguageServer implements LanguageServer {
     }
     
     void publishDiagnostics(Collection<Path> paths, DiagnosticCollector<JavaFileObject> errors) {
+        Map<URI, PublishDiagnosticsParamsImpl> files = new HashMap<>();
+        
+        paths.forEach(p -> files.put(p.toUri(), newPublishDiagnostics(p.toUri())));
+        
         errors.getDiagnostics().forEach(error -> {
-            LOG.warning(error.toString());
+            if (error.getStartPosition() != javax.tools.Diagnostic.NOPOS) {
+                URI uri = error.getSource().toUri();
+                PublishDiagnosticsParamsImpl publish = files.computeIfAbsent(uri, this::newPublishDiagnostics);
+
+                RangeImpl range = position(error);
+                DiagnosticImpl diagnostic = new DiagnosticImpl();
+                int severity = severity(error.getKind());
+
+                diagnostic.setSeverity(severity);
+                diagnostic.setRange(range);
+                diagnostic.setCode(error.getCode());
+                diagnostic.setMessage(error.getMessage(null));
+
+                publish.getDiagnostics().add(diagnostic);
+            }
         });
 
+        files.values().forEach(publishDiagnostics);
+    }
+
+    private int severity(javax.tools.Diagnostic.Kind kind) {
+        switch (kind) {
+            case ERROR:
+                return Diagnostic.SEVERITY_ERROR;
+            case WARNING:
+            case MANDATORY_WARNING:
+                return Diagnostic.SEVERITY_WARNING;
+            case NOTE:
+            case OTHER:
+            default:
+                return Diagnostic.SEVERITY_INFO;
+        }
+    }
+
+    private PublishDiagnosticsParamsImpl newPublishDiagnostics(URI newUri) {
+        PublishDiagnosticsParamsImpl p = new PublishDiagnosticsParamsImpl();
+
+        p.setDiagnostics(new ArrayList<>());
+        p.setUri(newUri.toString());
+
+        return p;
+    }
+
+    private RangeImpl position(javax.tools.Diagnostic<? extends JavaFileObject> error) {
+        // Compute start position
+        PositionImpl start = new PositionImpl();
+
+        start.setLine((int) (error.getLineNumber() - 1));
+        start.setCharacter((int) (error.getColumnNumber() - 1));
+
+        // Compute end position
+        PositionImpl end = endPosition(error);
+
+        // Combine into Range
+        RangeImpl range = new RangeImpl();
+
+        range.setStart(start);
+        range.setEnd(end);
+
+        return range;
+    }
+
+    private PositionImpl endPosition(javax.tools.Diagnostic<? extends JavaFileObject> error) {
+        try (Reader reader = error.getSource().openReader(true)) {
+            long startOffset = error.getStartPosition();
+            long endOffset = error.getEndPosition();
+
+            reader.skip(startOffset);
+
+            int line = (int) error.getLineNumber() - 1;
+            int column = (int) error.getColumnNumber() - 1;
+
+            for (long i = startOffset; i < endOffset; i++) {
+                int next = reader.read();
+
+                if (next == '\n') {
+                    line++;
+                    column = 0;
+                }
+                else
+                    column++;
+            }
+
+            PositionImpl end = new PositionImpl();
+
+            end.setLine(line);
+            end.setCharacter(column);
+
+            return end;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private List<? extends Location> findReferences(ReferenceParams params) {
@@ -319,8 +423,9 @@ class JavaLanguageServer implements LanguageServer {
 
         return getFilePath(uri).map(path -> {
             SymbolIndex index = workspace.findIndex(path);
+            List<? extends SymbolInformation> found = index.allInFile(uri).collect(Collectors.toList());
 
-            return index.allInFile(uri).collect(Collectors.toList());
+            return found;
         }).orElse(Collections.emptyList());
     }
 

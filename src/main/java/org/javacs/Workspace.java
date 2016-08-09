@@ -126,16 +126,21 @@ class Workspace {
      * If directory contains a config file, for example javaconfig.json or an eclipse project file, read it.
      */
     public Optional<JavacConfig> readIfConfig(Path dir) {
-        if (Files.exists(dir.resolve(".jls-config"))) {
-            JavaConfigJson json = readJavaConfigJson(dir.resolve(".jls-config"));
-            Collection<Path> classPath = json.classPath.stream().map(dir::resolve).collect(Collectors.toList());
-            Collection<Path> sourcePath = json.sources.stream().map(dir::resolve).collect(Collectors.toList());
+        if (Files.exists(dir.resolve("javaconfig.json"))) {
+            JavaConfigJson json = readJavaConfigJson(dir.resolve("javaconfig.json"));
+            Set<Path> classPath = json.classPathFile.map(classPathFile -> {
+                Path classPathFilePath = dir.resolve(classPathFile);
+                return readClassPathFile(classPathFilePath);
+            }).orElse(Collections.emptySet());
+            Set<Path> sourcePath = json.sourcePath.stream().map(dir::resolve).collect(Collectors.toSet());
             Path outputDirectory = dir.resolve(json.outputDirectory);
             JavacConfig config = new JavacConfig(sourcePath, classPath, outputDirectory);
 
             return Optional.of(config);
+        } else if (Files.exists(dir.resolve("pom.xml"))) {
+            return Optional.ofNullable(MavenJavacConfig.get(root).getConfig(dir));
         } else {
-            return Optional.empty();
+            return Optional.of(CatchEmAllJavacConfig.get(root).getConfig());
         }
     }
 

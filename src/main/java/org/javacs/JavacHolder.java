@@ -35,6 +35,9 @@ import java.util.logging.Logger;
  */
 public class JavacHolder {
     private static final Logger LOG = Logger.getLogger("main");
+    private final Set<Path> classPath;
+    private final Set<Path> sourcePath;
+    private final Path outputDirectory;
     // javac places all of its internal state into this Context object,
     // which is basically a Map<String, Object>
     public final Context context = new Context();
@@ -88,8 +91,11 @@ public class JavacHolder {
     private final Todo todo = Todo.instance(context);
     private final Types types = Types.instance(context);
 
-    public JavacHolder(Collection<Path> classPath, Collection<Path> sourcePath, Path outputDirectory) {
 
+    public JavacHolder(Set<Path> classPath, Set<Path> sourcePath, Path outputDirectory) {
+        this.classPath = classPath;
+        this.sourcePath = sourcePath;
+        this.outputDirectory = outputDirectory;
         options.put("-classpath", Joiner.on(File.pathSeparator).join(classPath));
         options.put("-sourcepath", Joiner.on(File.pathSeparator).join(sourcePath));
         options.put("-d", outputDirectory.toString());
