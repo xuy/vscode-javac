@@ -174,7 +174,7 @@ class Workspace {
         }
     }
 
-    private JavaFileObject findFile(JavacHolder compiler, Path path) {
+    public JavaFileObject findFile(JavacHolder compiler, Path path) {
         return compiler.fileManager.getRegularFile(path.toFile());
     }
 

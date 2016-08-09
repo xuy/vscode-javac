@@ -188,6 +188,7 @@ class JavaLanguageServer implements LanguageServer {
 
             @Override
             public void didOpen(DidOpenTextDocumentParams params) {
+                /*
                 try {
                     TextDocumentItem document = params.getTextDocument();
                     URI uri = URI.create(document.getUri());
@@ -202,10 +203,12 @@ class JavaLanguageServer implements LanguageServer {
                 } catch (NoJavaConfigException e) {
                     throw ShowMessageException.warning(e.getMessage(), e);
                 }
+                */
             }
 
             @Override
             public void didChange(DidChangeTextDocumentParams params) {
+                /*
                 VersionedTextDocumentIdentifier document = params.getTextDocument();
                 URI uri = URI.create(document.getUri());
                 Optional<Path> path = getFilePath(uri);
@@ -222,10 +225,12 @@ class JavaLanguageServer implements LanguageServer {
                         }
                     }
                 }
+                */
             }
 
             @Override
             public void didClose(DidCloseTextDocumentParams params) {
+                /*
                 TextDocumentIdentifier document = params.getTextDocument();
                 URI uri = URI.create(document.getUri());
                 Optional<Path> path = getFilePath(uri);
@@ -234,10 +239,12 @@ class JavaLanguageServer implements LanguageServer {
                     // Remove from source cache
                     workspace.clearFile(path.get());
                 }
+                */
             }
 
             @Override
             public void didSave(DidSaveTextDocumentParams params) {
+                /*
                 TextDocumentIdentifier document = params.getTextDocument();
                 URI uri = URI.create(document.getUri());
                 Optional<Path> path = getFilePath(uri);
@@ -245,6 +252,7 @@ class JavaLanguageServer implements LanguageServer {
                 // TODO re-lint dependencies as well as changed files
                 if (path.isPresent())
                     doLint(path.get());
+                */
             }
 
             @Override
@@ -276,6 +284,7 @@ class JavaLanguageServer implements LanguageServer {
 
             @Override
             public void didChangeWatchedFiles(DidChangeWatchedFilesParams params) {
+                /*
                 for (FileEvent event : params.getChanges()) {
                     String eventUri = event.getUri();
                     if (eventUri.endsWith(".java")) {
@@ -296,6 +305,7 @@ class JavaLanguageServer implements LanguageServer {
                         // TODO invalidate caches when javaconfig.json or pom.xml changes
                     }
                 }
+                */
             }
         };
     }
@@ -700,6 +710,7 @@ class JavaLanguageServer implements LanguageServer {
         if (maybePath.isPresent()) {
             Path path = maybePath.get();
             DiagnosticCollector<JavaFileObject> errors = new DiagnosticCollector<>();
+
             JavacHolder compiler = workspace.findCompiler(path);
             JavaFileObject file = workspace.findFile(compiler, path);
             long cursor = findOffset(file, position.getPosition().getLine(), position.getPosition().getCharacter());
