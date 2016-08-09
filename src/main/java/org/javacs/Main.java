@@ -53,13 +53,13 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
         try {
+            System.out.println("Hello World");
             LoggingFormat.startLogging();
             // Connection connection = connectToNode();
             Connection connection = acceptNode();
             run(connection);
         } catch (Throwable t) {
             LOG.log(Level.SEVERE, t.getMessage(), t);
-
             System.exit(1);
         }
     }

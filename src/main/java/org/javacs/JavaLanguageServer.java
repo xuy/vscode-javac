@@ -140,6 +140,7 @@ class JavaLanguageServer implements LanguageServer {
         return new TextDocumentService() {
             @Override
             public CompletableFuture<CompletionList> completion(TextDocumentPositionParams position) {
+                System.out.println("Auto complete is called here " + position.toString());
                 return null;
             }
 
@@ -461,8 +462,8 @@ class JavaLanguageServer implements LanguageServer {
     }
 
     public HoverImpl doHover(TextDocumentPositionParams position) {
-        LOG.info("Hover " + position.getTextDocument().getUri() + ' ' +
-                position.getPosition().getLine() + ':' + position.getPosition().getCharacter());
+//        LOG.info("Hover " + position.getTextDocument().getUri() + ' ' +
+//                position.getPosition().getLine() + ':' + position.getPosition().getCharacter());
 
         HoverImpl result = new HoverImpl();
 
