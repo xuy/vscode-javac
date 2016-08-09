@@ -45,8 +45,6 @@ public class SymbolIndex {
      */
     private Map<URI, JCTree.JCCompilationUnit> activeDocuments = new ConcurrentHashMap<>();
 
-    private URI root;
-
     @FunctionalInterface
     public interface ReportDiagnostics {
         void report(Collection<Path> paths, DiagnosticCollector<JavaFileObject> diagnostics);
@@ -54,14 +52,8 @@ public class SymbolIndex {
     
     public SymbolIndex(Set<Path> classPath, 
                        Set<Path> sourcePath, 
-                       Path outputDirectory,
-                       Path root,
+                       Path outputDirectory, 
                        ReportDiagnostics publishDiagnostics) {
-
-        if (root != null) {
-            this.root = root.toUri();
-        }
-
         JavacHolder compiler = new JavacHolder(classPath, sourcePath, outputDirectory);
         Indexer indexer = new Indexer(compiler.context);
         
@@ -349,7 +341,7 @@ public class SymbolIndex {
         }
     }
 
-    private SymbolInformationImpl symbolInformation(JCTree tree, Symbol symbol, JCTree.JCCompilationUnit compilationUnit) {
+    private static SymbolInformationImpl symbolInformation(JCTree tree, Symbol symbol, JCTree.JCCompilationUnit compilationUnit) {
         LocationImpl location = location(tree, compilationUnit);
         SymbolInformationImpl info = new SymbolInformationImpl();
 
@@ -375,7 +367,7 @@ public class SymbolIndex {
         return info;
     }
 
-    private LocationImpl location(JCTree tree, JCTree.JCCompilationUnit compilationUnit) {
+    private static LocationImpl location(JCTree tree, JCTree.JCCompilationUnit compilationUnit) {
         try {
             // Declaration should include offset
             int offset = tree.pos;
@@ -404,15 +396,7 @@ public class SymbolIndex {
                                                                  end);
             LocationImpl location = new LocationImpl();
 
-            URI full = compilationUnit.getSourceFile().toUri();
-            String uri;
-            if (root != null) {
-                uri = "file:///" + root.relativize(full);
-            } else {
-                uri = full.toString();
-            }
-
-            location.setUri(uri);
+            location.setUri(compilationUnit.getSourceFile().toUri().toString());
             location.setRange(position);
 
             return location;

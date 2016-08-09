@@ -129,7 +129,7 @@ public class SymbolIndexTest {
             }
             Set<Path> sourcePath = Collections.singleton(Paths.get("src/main/java").toAbsolutePath());
             Path outputDirectory = Paths.get("out").toAbsolutePath();
-            SymbolIndex index = new SymbolIndex(classPath, sourcePath, outputDirectory, null, (paths, errs) -> {
+            SymbolIndex index = new SymbolIndex(classPath, sourcePath, outputDirectory, (paths, errs) -> {
                 errs.getDiagnostics().forEach(d -> LOG.info(d.getMessage(Locale.US)));
             });
 

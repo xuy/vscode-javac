@@ -50,7 +50,6 @@ public class Server {
         private Connection(Socket socket) {
             this.socket = socket;
             this.server = new JavaLanguageServer();
-            this.server.setShutdownHandler(this);
             this.jsonServer = new LanguageServerToJsonAdapter(this.server);
         }
 

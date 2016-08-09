@@ -97,11 +97,7 @@ class Workspace {
     }
 
     private SymbolIndex newIndex(JavacConfig c) {
-        return new SymbolIndex(c.classPath,
-                c.sourcePath,
-                c.outputDirectory,
-                root,
-                javaLanguageServer::publishDiagnostics);
+        return new SymbolIndex(c.classPath, c.sourcePath, c.outputDirectory, javaLanguageServer::publishDiagnostics);
     }
 
 
@@ -213,5 +209,4 @@ class Workspace {
     public JavaFileObject getFile(Path path) {
         return findCompiler(path).fileManager.getRegularFile(path.toFile());
     }
-
 }
