@@ -17,7 +17,6 @@ public class BaseScanner extends TreeScanner {
     @Override
     public void visitTopLevel(JCTree.JCCompilationUnit tree) {
         this.compilationUnit = tree;
-
         super.visitTopLevel(tree);
     }
 
@@ -31,8 +30,9 @@ public class BaseScanner extends TreeScanner {
     @Override
     public void scan(List<? extends JCTree> nodes) {
         if (nodes != null) {
-            for (JCTree node : nodes)
+            for (JCTree node : nodes) {
                 scan(node);
+            }
         }
     }
 

@@ -47,29 +47,44 @@ export function activate(context: VSCode.ExtensionContext) {
         function createServer(): Promise<StreamInfo> {
             return new Promise((resolve, reject) => {
                 PortFinder.getPort((err, port) => {
-                    let fatJar = Path.resolve(context.extensionPath, "out", "fat-jar.jar");
-                    
-                    let args = [
-                        '-cp', fatJar, 
-                        '-Djavacs.port=' + port,
-                        'org.javacs.Main'
-                    ];
-                    
-                    console.log(javaExecutablePath + ' ' + args.join(' '));
-                    
-                    Net.createServer(socket => {
-                        console.log('Child process connected on port ' + port);
-
-                        resolve({
-                            reader: socket,
-                            writer: socket
+                    if (port != PortFinder.basePort) {
+                        console.log("Port in use, connect instead of create.");
+                        let socket = Net.createConnection({port: PortFinder.basePort}, () => {
+                            console.log('connected to server!');
                         });
-                    }).listen(port, () => {
-                        let options = { stdio: 'inherit', cwd: VSCode.workspace.rootPath };
+                        socket.on("connect", () => {
+                            resolve({
+                                reader: socket,
+                                writer: socket
+                            });
+                        });                        
+                    } else {
+                        /*
+                        let fatJar = Path.resolve(context.extensionPath, "out", "fat-jar.jar");
                         
-                        // Start the child java process
-                        ChildProcess.execFile(javaExecutablePath, args, options);
-                    });
+                        let args = [
+                            '-cp', fatJar, 
+                            '-Djavacs.port=' + port,
+                            'org.javacs.Main'
+                        ];
+                        
+                        console.log(javaExecutablePath + ' ' + args.join(' '));
+                        
+                        Net.createServer(socket => {
+                            console.log('Child process connected on port ' + port);
+                            resolve({
+                                reader: socket,
+                                writer: socket
+                            });
+                        }).listen(port, () => {
+                            let options = { stdio: 'inherit', cwd: VSCode.workspace.rootPath };
+                            
+                            // Do not start the child java process (debugging)
+                            ChildProcess.execFile(javaExecutablePath, args, options);
+                        });
+                        */
+                        console.log("cannot connect to language server");
+                    }
                 });
             });
         }

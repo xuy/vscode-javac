@@ -38,12 +38,10 @@ public class AutocompleteVisitor extends CursorScanner {
     public void visitSelect(JCTree.JCFieldAccess node) {
         // If expression contains cursor, no autocomplete
         JCTree.JCExpression expression = node.getExpression();
-
         if (containsCursor(expression))
             super.visitSelect(node);
         else {
             TypeMirror type = expression.type;
-
             if (type == null)
                 LOG.warning("No type for " + expression);
             else if (isClassReference(expression)) {

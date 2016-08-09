@@ -2,7 +2,46 @@ package org.javacs;
 
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.tree.JCTree;
-import io.typefox.lsapi.*;
+import io.typefox.lsapi.CodeActionParams;
+import io.typefox.lsapi.CodeLens;
+import io.typefox.lsapi.CodeLensParams;
+import io.typefox.lsapi.Command;
+import io.typefox.lsapi.CompletionItem;
+import io.typefox.lsapi.CompletionList;
+import io.typefox.lsapi.CompletionOptionsImpl;
+import io.typefox.lsapi.DidChangeConfigurationParams;
+import io.typefox.lsapi.DidChangeTextDocumentParams;
+import io.typefox.lsapi.DidChangeWatchedFilesParams;
+import io.typefox.lsapi.DidCloseTextDocumentParams;
+import io.typefox.lsapi.DidOpenTextDocumentParams;
+import io.typefox.lsapi.DidSaveTextDocumentParams;
+import io.typefox.lsapi.DocumentFormattingParams;
+import io.typefox.lsapi.DocumentHighlight;
+import io.typefox.lsapi.DocumentOnTypeFormattingParams;
+import io.typefox.lsapi.DocumentRangeFormattingParams;
+import io.typefox.lsapi.DocumentSymbolParams;
+import io.typefox.lsapi.Hover;
+import io.typefox.lsapi.HoverImpl;
+import io.typefox.lsapi.InitializeParams;
+import io.typefox.lsapi.InitializeResult;
+import io.typefox.lsapi.InitializeResultImpl;
+import io.typefox.lsapi.Location;
+import io.typefox.lsapi.MarkedStringImpl;
+import io.typefox.lsapi.MessageParams;
+import io.typefox.lsapi.PositionImpl;
+import io.typefox.lsapi.PublishDiagnosticsParams;
+import io.typefox.lsapi.RangeImpl;
+import io.typefox.lsapi.ReferenceParams;
+import io.typefox.lsapi.RenameParams;
+import io.typefox.lsapi.ServerCapabilities;
+import io.typefox.lsapi.ServerCapabilitiesImpl;
+import io.typefox.lsapi.ShowMessageRequestParams;
+import io.typefox.lsapi.SignatureHelp;
+import io.typefox.lsapi.SymbolInformation;
+import io.typefox.lsapi.TextDocumentPositionParams;
+import io.typefox.lsapi.TextEdit;
+import io.typefox.lsapi.WorkspaceEdit;
+import io.typefox.lsapi.WorkspaceSymbolParams;
 import io.typefox.lsapi.services.LanguageServer;
 import io.typefox.lsapi.services.TextDocumentService;
 import io.typefox.lsapi.services.WindowService;
@@ -10,7 +49,8 @@ import io.typefox.lsapi.services.WorkspaceService;
 
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaFileObject;
-import java.io.*;
+import java.io.IOException;
+import java.io.Reader;
 import java.net.URI;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -421,7 +461,6 @@ class JavaLanguageServer implements LanguageServer {
     }
 
     public HoverImpl doHover(TextDocumentPositionParams position) {
-
         LOG.info("Hover " + position.getTextDocument().getUri() + ' ' +
                 position.getPosition().getLine() + ':' + position.getPosition().getCharacter());
 

@@ -5,7 +5,6 @@ import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.List;
 
 import javax.tools.JavaFileObject;
-import java.util.logging.Logger;
 
 /**
  * Removes all statements after the cursor
@@ -25,7 +24,6 @@ public class AutocompletePruner extends CursorScanner {
         // Scan up to statement containing cursor
         while (countStatements < stats.size()) {
             JCTree.JCStatement s = stats.get(countStatements);
-
             if (containsCursor(s))
                 break;
             else

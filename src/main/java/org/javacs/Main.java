@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JSR310Module;
 import io.typefox.lsapi.services.json.LanguageServerToJsonAdapter;
+
+import java.net.ServerSocket;
 import java.util.concurrent.ExecutionException;
 
 import java.io.*;
@@ -47,18 +49,26 @@ public class Main {
         return m;
     }
 
+    // need to make it a real server.
+
     public static void main(String[] args) throws IOException {
         try {
             LoggingFormat.startLogging();
-
-            Connection connection = connectToNode();
-
+            // Connection connection = connectToNode();
+            Connection connection = acceptNode();
             run(connection);
         } catch (Throwable t) {
             LOG.log(Level.SEVERE, t.getMessage(), t);
 
             System.exit(1);
         }
+    }
+
+    private static Connection acceptNode() throws IOException {
+        String port = System.getProperty("javacs.port");
+        ServerSocket serverSocket = new ServerSocket(Integer.parseInt(port));
+        Socket clientSocket = serverSocket.accept();
+        return new Connection(clientSocket.getInputStream(), clientSocket.getOutputStream());
     }
 
     private static Connection connectToNode() throws IOException {

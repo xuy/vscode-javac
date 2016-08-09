@@ -12,7 +12,7 @@ public class FuzzyParser extends JavacParser {
                           boolean b, boolean b1, boolean b2) {
         super(parserFactory, lexer, b, b1, b2);
     }
-
+    
     @Override
     /** If next input token matches given token, skip it, otherwise report
      *  an error.
